@@ -4,6 +4,8 @@ import csv
 import json
 from datetime import datetime
 
+DATE_TIME_FORMAT = '%Y-%m-%d %H:%M:%S'
+
 
 class DataReader:
 
@@ -64,19 +66,31 @@ class User:  # Creating a class and constructor for our users
                 f"email: {self.email}, password: {self.password}, role: {self.role}, "
                 f"created_at: {self.created_at}")
 
-    def validate_email(self):
-        if self.email.count("@") > 1:
-            return False
-        split_email_at = self.email.split("@")
-        if len(split_email_at[0]) < 1:
-            return False
-        if split_email_at[1].find(".") < 1:
-            return False
-        split_email_dot = self.email.split(".")
-        if split_email_dot[-1].isalnum():
-            if 0 < len(split_email_dot[-1]) < 5:
-                return True
-            return False
+    def __hash__(self):
+        # tiffany sie powtarza 65 i 66 rekord zrobić że jeden hasz to albo te
+        return hash((self.firstname, self.telephone_number, self.email, self.password, self.role, tuple(self.children)))
+
+    def __eq__(self, other):
+        # return (isinstance(other, User) and
+        #         self.firstname == other.firstname and
+        #         self.telephone_number == other.telephone_number and
+        #         self.email == other.telephone_number and
+        #         self.password == other.password and
+        #         self.role == other.role and
+        #         self.children == other.children)
+        return (
+                (isinstance(other, User) and
+                 self.firstname == other.firstname and
+                 self.telephone_number == other.telephone_number and
+                 self.password == other.password and
+                 self.role == other.role and
+                 self.children == other.children) or
+                (isinstance(other, User) and
+                 self.firstname == other.firstname and
+                 self.email == other.email and
+                 self.password == other.password and
+                 self.role == other.role and
+                 self.children == other.children))
 
 
 class Child:
@@ -87,6 +101,39 @@ class Child:
 
     def __repr__(self):
         return f"Name: {self.name}, age: {self.age}"
+
+
+class DataValidation:
+    users_to_delete = []
+
+    def __init__(self, users):
+        self.users = users
+
+    @classmethod
+    def validate_email(cls, user):
+        split_email_at = user.email.split("@")
+        split_email_dot = user.email.split(".")
+        if (user.email.count("@") > 1 or
+                len(split_email_at[0]) < 1 or
+                split_email_at[1].find(".") < 1 or
+                not split_email_dot[-1].isalnum() or
+                not 0 < len(split_email_dot[-1]) < 5):
+            cls.users_to_delete.append(user)
+
+    @staticmethod
+    def telephone_validation(number):
+        number = ''.join(char for char in number if char.isdigit())
+        if len(number) > 9:
+            number = number[-9:]
+        return number
+
+    def data_validation(self):
+        for user in self.users:
+            self.validate_email(user)
+            user.telephone_number = self.telephone_validation(user.telephone_number)
+        for user_ in self.users_to_delete:
+            print(f"usuwam {user_}")
+            self.users.remove(user_)
 
 
 class DataManager:
@@ -103,9 +150,19 @@ class DataManager:
         for file_path in glob('InputData/**/*.json', recursive=True):
             self.data.extend(DataReader.read_json(file_path))
 
+    def add_user_removing_duplicates(self, user):
+        if user not in self.users:
+            self.users.append(user)
+        else:
+            for dplct in self.users:
+                if dplct == user and user.created_at > dplct.created_at:
+                    print(f"Ten co rzekomo nowszy: {user}, i ten co starszy: {dplct}")
+                    self.users.remove(dplct)
+                    self.users.append(user)
+
     def create_user_from_data(self, data):
         for entry in self.data:
-            created_at = datetime.strptime(entry['created_at'], '%Y-%m-%d %H:%M:%S')
+            created_at = datetime.strptime(entry['created_at'], DATE_TIME_FORMAT)
             user = User(
                 firstname=entry['firstname'],
                 telephone_number=entry['telephone_number'],
@@ -118,23 +175,20 @@ class DataManager:
             children_data = entry.get('children')
             children_instances = [Child(child['name'], child['age'], user) for child in children_data]
             user.children = children_instances
-            self.users.append(user)
+            self.add_user_removing_duplicates(user)
 
     @classmethod
     def user_display(cls):
-        for user in cls.users:
-            print(user)
-
-    def remove_duplicates(self):
-        pass
-
-
-def main():
-    data_manager = DataManager()
-    data_manager.import_data()
-    data_manager.create_user_from_data(data_manager.data)
-    # data_manager.user_display()
+        for i, v in enumerate(cls.users):
+            print(i + 1, v)
+        print(len(cls.users))
 
 
 if __name__ == '__main__':
-    main()
+    data_manager = DataManager()
+    data_manager.import_data()
+    data_manager.create_user_from_data(data_manager.data)
+    data_validator = DataValidation(data_manager.users)
+    data_validator.data_validation()
+
+    data_manager.user_display()
